@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -465,8 +466,11 @@ async function onMsAuth(account) {
   const name = account.name || account.username;
   localStorage.setItem('cv_user', name);
   localStorage.setItem('cv_auth', 'ms');
-  document.getElementById('acct-badge').style.display = '';
-  document.getElementById('acct-name').textContent = account.username;
+  localStorage.setItem('cv_ms_configured', '1'); // Marca dispositivo como configurado
+  try {
+    document.getElementById('acct-badge').style.display = '';
+    document.getElementById('acct-name').textContent = account.username;
+  } catch(e) {}
   onAuth(name);
 }
 
@@ -506,11 +510,24 @@ async function graphH(method='GET', body=null) {
 async function getSiteId() {
   if(graphSiteId) return graphSiteId;
   const opts = await graphH();
-  const r = await fetch(`${GRAPH}/sites/${SP_HOST}:${SP_PATH}`, opts);
-  if(!r.ok) throw new Error('Site não encontrado: ' + r.status);
-  const j = await r.json();
-  graphSiteId = j.id;
-  return graphSiteId;
+  // OneDrive for Business — usa /users/{upn}/drive para acessar o site pessoal
+  // Tenta primeiro via sites/{host}:{path}
+  try {
+    const r = await fetch(`${GRAPH}/sites/${SP_HOST}:${SP_PATH}`, opts);
+    if(r.ok) {
+      const j = await r.json();
+      graphSiteId = j.id;
+      return graphSiteId;
+    }
+  } catch(e) {}
+  // Fallback: busca via UPN do admin
+  const r2 = await fetch(`${GRAPH}/users/admin@santafelicidadeagro.onmicrosoft.com/site`, opts);
+  if(r2.ok) {
+    const j2 = await r2.json();
+    graphSiteId = j2.id;
+    return graphSiteId;
+  }
+  throw new Error('Não foi possível encontrar o site do SharePoint.');
 }
 
 async function gGet(mod) {
@@ -566,8 +583,19 @@ function loginLocal() {
   if(LOCAL_USERS[u]?.includes(p)) {
     document.getElementById('auth-err').textContent = '';
     localStorage.setItem('cv_user', u);
-    localStorage.setItem('cv_auth', 'local');
+    // Se MS já foi configurado, mantém auth como 'ms' para poder ler SharePoint
+    if(!isMsConfigured()) localStorage.setItem('cv_auth', 'local');
+    else localStorage.setItem('cv_auth', 'ms');
     onAuth(u);
+    // Renova token MS em background se dispositivo já foi configurado
+    if(isMsConfigured() && msalApp) {
+      const accounts = msalApp.getAllAccounts();
+      if(accounts.length > 0) {
+        msalApp.acquireTokenSilent({ scopes: SCOPES, account: accounts[0] })
+          .then(r => { msToken = r.accessToken; })
+          .catch(() => {}); // falha silenciosa — offline funciona com cache
+      }
+    }
   } else {
     document.getElementById('auth-err').textContent = 'Login ou Senha incorreto !! Tente novamente!!';
   }
@@ -579,6 +607,11 @@ function onAuth(nameRaw) {
   fwd('sc-auth','sc-home');
   document.getElementById('hello').textContent = `Olá, ${n.charAt(0).toUpperCase()+n.slice(1)}`;
   updatePills(); updatePending();
+}
+
+// Verifica se o MS já foi autenticado neste dispositivo antes
+function isMsConfigured() {
+  return !!localStorage.getItem('cv_ms_configured');
 }
 
 function doLogout() {
