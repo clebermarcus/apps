@@ -410,7 +410,7 @@ function initMsal(clientId) {
       auth: {
         clientId,
         authority: `https://login.microsoftonline.com/${TENANT}`,
-        redirectUri: 'https://clebermarcus.github.io/Apps/ControleDeVeiculos.html',
+        redirectUri: 'https://clebermarcus.github.io/apps/ControleDeVeiculos.html',
       },
       cache: { cacheLocation:'localStorage', storeAuthStateInCookie:true },
       system: {
@@ -427,26 +427,15 @@ async function checkMsalRedirect() {
   msalApp = initMsal(cid);
   if(!msalApp) return;
   try {
-    // 1. Conta já em cache — token silencioso (funciona dentro de iframe)
+    // Só tenta token silencioso se já houver conta em cache
     const accounts = msalApp.getAllAccounts();
     if(accounts.length > 0) {
-      try {
-        const r = await msalApp.acquireTokenSilent({ scopes: SCOPES, account: accounts[0] });
-        msToken = r.accessToken;
-        await onMsAuth(accounts[0]);
-        return;
-      } catch(e) { /* token expirado, tenta ssoSilent */ }
-    }
-    // 2. SSO silencioso — detecta sessão Microsoft ativa no browser
-    try {
-      const r = await msalApp.ssoSilent({ scopes: SCOPES });
+      const r = await msalApp.acquireTokenSilent({ scopes: SCOPES, account: accounts[0] });
       msToken = r.accessToken;
-      await onMsAuth(r.account);
-      return;
-    } catch(e) {
-      // Sem sessão em cache — usuário precisa clicar em "Entrar com Microsoft 365"
+      await onMsAuth(accounts[0]);
     }
-  } catch(e) { /* silencioso */ }
+    // Se não há conta em cache, vai direto para tela de login (sem travar)
+  } catch(e) { /* sem cache — mostra tela de login */ }
 }
 
 async function loginMS() {
@@ -1121,4 +1110,3 @@ async function doDelete() {
 </script>
 </body>
 </html>
-
