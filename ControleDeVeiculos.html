@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -415,13 +416,19 @@ async function getSiteId(){
 }
 
 async function gGet(mod){
+  console.log('gGet:', mod, LIST_GUIDS[mod]);
   const sid=await getSiteId();
   const url=GRAPH+'/sites/'+sid+'/lists/'+LIST_GUIDS[mod]+'/items?expand=fields&$top=500';
   const r=await fetch(url, await graphH());
   if(!r.ok){ const t=await r.text(); throw new Error('Graph '+r.status+': '+t.substring(0,200)); }
   const j=await r.json();
-  var items=j.value.map(item=>Object.assign({},item.fields,{_gid:item.id}));
-  items.sort((a,b)=>(parseInt(b.ID)||0)-(parseInt(a.ID)||0));
+  var items=j.value.map(function(item){
+    var f=item.fields||{};
+    // Graph API usa 'id' minúsculo — normaliza para 'ID' maiúsculo como no PowerApps
+    if(f.id&&!f.ID) f.ID=f.id;
+    return Object.assign({},f,{_gid:item.id});
+  });
+  items.sort(function(a,b){return (parseInt(b.ID)||0)-(parseInt(a.ID)||0);});
   return items;
 }
 
